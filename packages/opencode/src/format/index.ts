@@ -73,14 +73,29 @@ export namespace Format {
     return status
   }
 
-  async function getFormatter(ext: string) {
+  function extractExtensions(filepath: string): string[] {
+    const basename = path.basename(filepath)
+    const parts = basename.split(".")
+    if (parts.length < 2) return []
+
+    const extensions: string[] = []
+    for (let i = 1; i < parts.length; i++) {
+      extensions.push("." + parts.slice(i).join("."))
+    }
+
+    return extensions
+  }
+
+  async function getFormatter(filepath: string) {
+    const fileExtensions = extractExtensions(filepath)
     const formatters = await state().then((x) => x.formatters)
     const result = []
     for (const item of Object.values(formatters)) {
-      log.info("checking", { name: item.name, ext })
-      if (!item.extensions.includes(ext)) continue
+      log.info("checking", { name: item.name, filepath })
+      const matches = item.extensions.some((ext) => fileExtensions.includes(ext))
+      if (!matches) continue
       if (!(await isEnabled(item))) continue
-      log.info("enabled", { name: item.name, ext })
+      log.info("enabled", { name: item.name, filepath })
       result.push(item)
     }
     return result
@@ -105,9 +120,8 @@ export namespace Format {
     Bus.subscribe(File.Event.Edited, async (payload) => {
       const file = payload.properties.file
       log.info("formatting", { file })
-      const ext = path.extname(file)
 
-      for (const item of await getFormatter(ext)) {
+      for (const item of await getFormatter(file)) {
         log.info("running", { command: item.command })
         try {
           const proc = Bun.spawn({
